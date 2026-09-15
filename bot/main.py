@@ -6,8 +6,10 @@ import difflib
 import io
 from discord.ext import commands
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 from datetime import datetime
+
 
 TOKEN = os.getenv('DISCORD_TOKEN')
 
@@ -118,6 +120,11 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
     plt.title("Containers Needed to Complete a Collection by Percentile")
     plt.grid(True)
     plt.legend()
+
+    # Force both axes to only show whole-number tick marks
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
     # Add contextual information in a legend box
     info_text = (
