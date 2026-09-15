@@ -46,7 +46,7 @@ async def custom_help(ctx):
         description="Here are the available commands for the bot:",
         color=discord.Color.blue()
     )
-    embed.add_field(name="`!collection [total items] [owned items] [owned duplicates] [duplicate to item conversion cost]`", value="Simulates the number of containers needed to complete a collection.", inline=False)
+    embed.add_field(name="`!collection [total items] [owned items] [tokens owned] [duplicates owned] [conversion rate]`", value="Simulates the number of containers needed to complete a collection.", inline=False)
     embed.add_field(name="`!open [container name]`", value="Opens a container and gives a random drop.", inline=False)
     embed.add_field(name="`!info`", value="Lists all available containers.", inline=False)
     embed.add_field(name="`!help`", value="Displays this help message.", inline=False)
@@ -55,16 +55,28 @@ async def custom_help(ctx):
 
 # Command: Collection Simulation
 @bot.command(name="collection")
-async def collection(ctx, n: int = None, k: int = None, d: int = None, c: int = None):
-    """Simulates the number of containers needed to complete a collection."""
+async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = None, c: int = None):
+    """Simulates the number of containers needed to complete a collection.
+
+    n = total items in the collection
+    k = items already owned
+    t = collection tokens already banked
+    d = duplicates owned toward the next token (should be less than c, since
+        the game auto-exchanges duplicates into tokens once the rate is hit)
+    c = duplicates required per token (conversion/exchange rate)
+    """
 
     # If no arguments provided, show usage instruction
-    if n is None or k is None or d is None or c is None:
-        await ctx.send("Usage: `!collection [total items] [owned items] [owned duplicates] [duplicate to item conversion cost]`")
+    if n is None or k is None or t is None or d is None or c is None:
+        await ctx.send("Usage: `!collection [total items] [owned items] [tokens owned] [duplicates owned] [conversion rate]`")
         return
-    
-    if n > 100 or n <= 0 or k > n or k < 0 or d < 0 or c <= 0:
+
+    if n > 100 or n <= 0 or k > n or k < 0 or t < 0 or d < 0 or c <= 0:
         await ctx.send("Invalid input values. Please check the command usage.")
+        return
+
+    if d >= c:
+        await ctx.send(f"Duplicates owned ({d}) should be less than the conversion rate ({c}), since duplicates auto-exchange into tokens once they hit that number. Did you mean to include those extra tokens in the tokens owned value instead?")
         return
 
     runs = 100000
@@ -74,6 +86,7 @@ async def collection(ctx, n: int = None, k: int = None, d: int = None, c: int = 
         collection = [-1] * (n - k) + [1] * k
         containers = 0
         dupes = d
+        tokens = t
         empties = n - k
 
         while empties > 0:
@@ -81,11 +94,15 @@ async def collection(ctx, n: int = None, k: int = None, d: int = None, c: int = 
             index = np.random.randint(0, n)
             if collection[index] == 1:
                 dupes += 1
+                if dupes >= c:
+                    new_tokens = dupes // c
+                    tokens += new_tokens
+                    dupes -= new_tokens * c
             else:
                 collection[index] = 1
                 empties -= 1
 
-            if dupes // c >= empties:
+            if tokens >= empties:
                 break
 
         results.append(containers)
@@ -106,8 +123,9 @@ async def collection(ctx, n: int = None, k: int = None, d: int = None, c: int = 
     info_text = (
         f"Total Items in Collection: {n}\n"
         f"Items Owned: {k}\n"
+        f"Tokens Owned: {t}\n"
         f"Duplicates Owned: {d}\n"
-        f"Duplicate Conversion Rate: {c}"
+        f"Conversion Rate: {c}"
     )
     plt.annotate(
         info_text,
