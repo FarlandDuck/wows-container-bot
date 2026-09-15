@@ -207,19 +207,33 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
     # Y-axis: whole-number container counts only
     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
-    # Add contextual information in a legend box
+    # Add contextual information in a box (bottom-right)
     info_text = (
         f"Total Items in Collection: {n}\n"
         f"Items Owned: {k}\n"
         f"Tokens Owned: {t}\n"
         f"Duplicates Owned: {d}\n"
-        f"Conversion Rate: {c}\n"
-        f"Mean: {mean_containers:.2f} Containers"
+        f"Conversion Rate: {c}"
     )
     plt.annotate(
         info_text,
         xy=(0.98, 0.02), xycoords='axes fraction',
         fontsize=10, color='black', ha='right', va='bottom',
+        bbox=dict(boxstyle="round,pad=0.5", edgecolor='black', facecolor='white')
+    )
+
+    # Separate box (top-left, not the legend) for min / max / mean containers
+    min_containers = min(pmf.keys())
+    max_containers = max(pmf.keys())
+    stats_text = (
+        f"Min: {min_containers} Containers\n"
+        f"Max: {max_containers} Containers\n"
+        f"Mean: {mean_containers:.2f} Containers"
+    )
+    plt.annotate(
+        stats_text,
+        xy=(0.02, 0.98), xycoords='axes fraction',
+        fontsize=10, color='black', ha='left', va='top',
         bbox=dict(boxstyle="round,pad=0.5", edgecolor='black', facecolor='white')
     )
 
