@@ -1,6 +1,8 @@
-# Container Bot
+# WoWS Container Bot
 
-A Discord bot that simulates opening loot-box style "containers," tracks drop pools defined in JSON, and can run a Monte Carlo simulation to estimate how many containers a player will need to complete a full collection.
+A Discord bot for **World of Warships** communities that simulates opening in-game containers (like Santa's Gifts, Coal Containers, Steel Containers, etc.), tracks drop pools defined in JSON, and can run a Monte Carlo simulation to estimate how many containers a player will need to complete a full collection (e.g., a full set of camouflages, commanders, or event ships).
+
+Drops are modeled after real World of Warships reward types — premium/tech-tree ships, Coal, Steel, Doubloons, Free XP, Elite Commander XP, Research Points, Premium Account time, and themed XP/Credits boosters — but the container format is generic enough to represent any container Wargaming introduces.
 
 ## Features
 
@@ -61,7 +63,7 @@ Opens the named container and returns an embed with the resulting drop(s).
 
 Example:
 ```
-!open galaxy case
+!open santa's ultra gift
 ```
 
 ### `!info`
@@ -75,7 +77,7 @@ Example:
 
 ### `!collection [n] [k] [t] [d] [c]`
 
-Simulates the process of completing a full collection by opening containers repeatedly, and returns a chart of containers-needed vs. percentile of players.
+Simulates the process of completing a full in-game collection (e.g., a Yamamoto Isoroku commander collection, a camouflage set, or an event collection) by opening containers repeatedly, and returns a chart of containers-needed vs. percentile of players.
 
 | Argument | Meaning |
 |---|---|
@@ -125,14 +127,14 @@ A container uses **one** of the following two structures:
 
 ```json
 {
-  "nickname": "example",
-  "name": "Example Case",
+  "nickname": "coal15",
+  "name": "15 Point Coal Container",
   "color": "#5865F2",
-  "image": "https://example.com/case.png",
+  "image": "https://example.com/coal-container.png",
   "drops": [
-    { "name": "Common Item", "rate": 70, "link": "https://example.com/common.png" },
-    { "name": "Rare Item", "rate": 25, "link": "https://example.com/rare.png" },
-    { "name": "Legendary Item", "rate": 5, "link": "https://example.com/legendary.png" }
+    { "name": "6,000 Coal", "rate": 70, "link": "https://example.com/coal.png" },
+    { "name": "2,500 Doubloons", "rate": 25, "link": "https://example.com/doubloons.png" },
+    { "name": "Premium Ship", "rate": 5, "link": "https://example.com/ship.png" }
   ]
 }
 ```
@@ -145,32 +147,47 @@ A container uses **one** of the following two structures:
 
 ```json
 {
-  "nickname": "example",
-  "name": "Example Case",
-  "color": "#5865F2",
-  "image": "https://example.com/case.png",
+  "nickname": "ultra",
+  "name": "Santa's Ultra Gift 2025 Container",
+  "color": "0xCF3A22",
+  "image": "https://example.com/santas-gift.png",
   "slots": [
+    { "drops": [ ... ] },
     { "drops": [ ... ] },
     { "drops": [ ... ] }
   ]
 }
 ```
 
-- Each entry in `slots` is resolved independently, so the container yields one drop per slot.
+- Each entry in `slots` is resolved independently, so the container yields one drop per slot — for example, one slot resolving to a ship or resource reward, and separate slots each resolving to a bonus booster.
 - The first slot's drop image is used as the embed's main image; all resulting drop names are listed in the embed description.
+- `color` can be given as a `#RRGGBB` hex string or a `0xRRGGBB` literal — both are accepted.
 
 #### Nested drop pools
 
-Any individual drop entry can include its own `drops` sub-pool instead of being a final item:
+Any individual drop entry can include its own `drops` sub-pool instead of being a final item. This is how WoWS-style tiered containers are represented — e.g., "container → reward category → specific ship":
 
 ```json
-{ "name": "Weapon Case", "rate": 40, "drops": [
-  { "name": "Skin A", "rate": 90 },
-  { "name": "Skin B (Rare)", "rate": 10 }
-]}
+{
+  "name": "Premium Ship",
+  "rate": 32,
+  "drops": [
+    {
+      "name": "Tier VI–VIII Pool",
+      "rate": 62.5,
+      "drops": [
+        { "name": "Admiral Makarov", "link": "https://example.com/makarov.png" },
+        { "name": "Arkhangelsk", "link": "https://example.com/arkhangelsk.png" },
+        { "name": "Scharnhorst", "link": "https://example.com/scharnhorst.png" }
+      ]
+    }
+  ]
+}
 ```
 
-When a drop with a nested `drops` list is selected, the bot recurses into that sub-pool to determine the final item. This allows structures like "case → weapon type → specific skin."
+You can nest this as deeply as needed — e.g. an ultra-rare "Golden Ship" sub-pool (with a very low `rate`, such as `0.01`) alongside a common "Tier X Ship" sub-pool (`rate: 99.99`), so that a single top-level "Golden Gift" outcome can resolve all the way down to one specific golden ship skin.
+
+When a drop with a nested `drops` list is selected, the bot recurses into that sub-pool to determine the final item.
 
 ## Logging
 
