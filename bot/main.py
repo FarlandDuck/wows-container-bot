@@ -135,22 +135,25 @@ def exact_collection_pmf(n, k, t0, d0, c):
     return pmf
 
 
-def pmf_to_percentile_curve(pmf, num_points=200):
-    """Exact quantile function: for each percentile p, the smallest m with CDF(m) >= p/100."""
-    ms = np.array(sorted(pmf.keys()))
-    probs = np.array([pmf[m] for m in ms])
-    cdf = np.cumsum(probs)
-    cdf[-1] = 1.0  # guard against float drift so the 100th percentile resolves
-
-    percentiles = np.linspace(0, 100, num_points)
-    curve = np.empty(num_points)
-    idx = 0
-    for i, pct in enumerate(percentiles):
-        target = pct / 100.0
-        while idx < len(cdf) - 1 and cdf[idx] < target - 1e-12:
-            idx += 1
-        curve[i] = ms[idx]
-    return percentiles, curve
+def pmf_to_exact_staircase(pmf):
+    """
+    Builds the exact quantile-function staircase from the PMF's CDF, rather than
+    interpolating between a handful of sampled percentiles. The number of
+    containers needed is always a whole number, so the true quantile function
+    is a step function; plotting it this way (a horizontal segment at height m
+    from the percentile where m becomes achievable to the percentile where the
+    next value takes over, then a vertical jump) draws that step shape exactly,
+    with no diagonal-line artifacts from sparse sampling.
+    """
+    xs, ys = [], []
+    prev_cdf = 0.0
+    for m in sorted(pmf.keys()):
+        cdf_m = prev_cdf + pmf[m]
+        xs.extend([prev_cdf * 100, cdf_m * 100])
+        ys.extend([m, m])
+        prev_cdf = cdf_m
+    xs[-1] = 100.0  # guard against float drift so the curve lands exactly at 100
+    return xs, ys
 
 
 def pmf_mean(pmf):
@@ -185,21 +188,23 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
 
     # Exact PMF via absorbing Markov chain -- replaces the old 100k-run Monte Carlo.
     pmf = exact_collection_pmf(n, k, t, d, c)
-    percentiles, curve = pmf_to_percentile_curve(pmf, num_points=200)
+    xs, ys = pmf_to_exact_staircase(pmf)
     mean_containers = pmf_mean(pmf)
 
     # Generate the plot
     plt.figure(figsize=(10, 5))
-    plt.plot(percentiles, curve, label="Number of Containers Needed (exact)", color='b')
+    plt.plot(xs, ys, label="Number of Containers Needed (exact)", color='b')
     plt.xlabel("Percentile of Players")
     plt.ylabel("Number of Containers Opened")
     plt.title("Containers Needed to Complete a Collection by Percentile")
     plt.grid(True)
     plt.legend()
 
-    # Force both axes to only show whole-number tick marks
+    # X-axis anchored to fixed 0/20/40/60/80/100 percentile marks
     ax = plt.gca()
-    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    ax.set_xlim(0, 100)
+    ax.set_xticks([0, 20, 40, 60, 80, 100])
+    # Y-axis: whole-number container counts only
     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
     # Add contextual information in a legend box
@@ -209,7 +214,7 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
         f"Tokens Owned: {t}\n"
         f"Duplicates Owned: {d}\n"
         f"Conversion Rate: {c}\n"
-        f"Exact Mean: {mean_containers:.2f}"
+        f"Mean: {mean_containers:.0f} Containers"
     )
     plt.annotate(
         info_text,
