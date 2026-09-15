@@ -48,17 +48,119 @@ async def custom_help(ctx):
         description="Here are the available commands for the bot:",
         color=discord.Color.blue()
     )
-    embed.add_field(name="`!collection [total items] [owned items] [tokens owned] [duplicates owned] [conversion rate]`", value="Simulates the number of containers needed to complete a collection.", inline=False)
+    embed.add_field(name="`!collection [total items] [owned items] [tokens owned] [duplicates owned] [conversion rate]`", value="Calculates the exact number of containers needed to complete a collection.", inline=False)
     embed.add_field(name="`!open [container name]`", value="Opens a container and gives a random drop.", inline=False)
     embed.add_field(name="`!info`", value="Lists all available containers.", inline=False)
     embed.add_field(name="`!help`", value="Displays this help message.", inline=False)
 
     await ctx.send(embed=embed)
 
-# Command: Collection Simulation
+
+def exact_collection_pmf(n, k, t0, d0, c):
+    """
+    Computes the EXACT probability distribution of the number of containers
+    needed to complete a collection, via an absorbing Markov chain, instead
+    of a Monte Carlo simulation.
+
+    Model
+    -----
+    Let e = number of empty (uncollected) slots remaining. Each draw hits an
+    empty slot with probability e/n (a "new item") or an already-owned slot
+    with probability (n-e)/n (a "duplicate"). Because slots are symmetric,
+    the exact set of which slots are owned never matters -- only the count e
+    does -- so e (together with the running duplicate/token counters) is a
+    sufficient state for an exact Markov chain, with no need to sample.
+
+    Since duplicates always convert into tokens deterministically (d0+s
+    duplicates drawn so far always yields the same tokens/leftover-duplicates
+    via divmod by c, regardless of the order new-item vs. duplicate draws
+    happened in), the pair (e, s) -- where s = cumulative duplicate draws
+    so far -- fully determines the state:
+        d(s) = (d0 + s) % c
+        t(s) = t0 + (d0 + s) // c
+    This collapses the (e, d, t) state space down to just (e, s), which is
+    walked forward step-by-step (a draw either decreases e by 1, or
+    increases s by 1), tracking the probability mass at each reachable
+    state. Whenever a state's t(s) >= e (mirroring the original loop's
+    `if tokens >= empties: break`), that probability mass is absorbed into
+    the output PMF at the current step count m.
+
+    Because t(s) is non-decreasing and unbounded as s grows, for any fixed e
+    there's always a finite s beyond which t(s) >= e is guaranteed
+    deterministically -- so this process is guaranteed to fully absorb
+    (PMF sums to exactly 1.0) after a finite number of steps.
+
+    Returns
+    -------
+    dict {m: probability} for m = 0, 1, 2, ... (m = containers opened)
+    """
+    e0 = n - k
+    if e0 <= 0:
+        return {0: 1.0}
+
+    alive = {e0: 1.0}  # key: e : probability mass; s is implied by (m, e)
+    m = 0
+    pmf = {}
+
+    while alive:
+        m += 1
+        new_alive = {}
+        for e, p in alive.items():
+            s = (m - 1) - e0 + e  # cumulative duplicate draws so far, before this draw
+            p_new = e / n
+            p_dup = (n - e) / n
+
+            # Draw a NEW item: e decreases by 1, s unchanged.
+            if p_new > 0:
+                e_n, s_n = e - 1, s
+                t_n = t0 + (d0 + s_n) // c
+                prob = p * p_new
+                if t_n >= e_n:
+                    pmf[m] = pmf.get(m, 0.0) + prob
+                else:
+                    new_alive[e_n] = new_alive.get(e_n, 0.0) + prob
+
+            # Draw a DUPLICATE: e unchanged, s increases by 1.
+            if p_dup > 0:
+                e_d, s_d = e, s + 1
+                t_d = t0 + (d0 + s_d) // c
+                prob = p * p_dup
+                if t_d >= e_d:
+                    pmf[m] = pmf.get(m, 0.0) + prob
+                else:
+                    new_alive[e_d] = new_alive.get(e_d, 0.0) + prob
+
+        alive = new_alive
+
+    return pmf
+
+
+def pmf_to_percentile_curve(pmf, num_points=200):
+    """Exact quantile function: for each percentile p, the smallest m with CDF(m) >= p/100."""
+    ms = np.array(sorted(pmf.keys()))
+    probs = np.array([pmf[m] for m in ms])
+    cdf = np.cumsum(probs)
+    cdf[-1] = 1.0  # guard against float drift so the 100th percentile resolves
+
+    percentiles = np.linspace(0, 100, num_points)
+    curve = np.empty(num_points)
+    idx = 0
+    for i, pct in enumerate(percentiles):
+        target = pct / 100.0
+        while idx < len(cdf) - 1 and cdf[idx] < target - 1e-12:
+            idx += 1
+        curve[i] = ms[idx]
+    return percentiles, curve
+
+
+def pmf_mean(pmf):
+    return sum(m * p for m, p in pmf.items())
+
+
+# Command: Collection Simulation (now computed exactly, no sampling)
 @bot.command(name="collection")
 async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = None, c: int = None):
-    """Simulates the number of containers needed to complete a collection.
+    """Computes the exact number of containers needed to complete a collection.
 
     n = total items in the collection
     k = items already owned
@@ -81,40 +183,14 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
         await ctx.send(f"Duplicates owned ({d}) should be less than the conversion rate ({c}), since duplicates auto-exchange into tokens once they hit that number. Did you mean to include those extra tokens in the tokens owned value instead?")
         return
 
-    runs = 100000
-    results = []
-
-    for _ in range(runs):
-        collection = [-1] * (n - k) + [1] * k
-        containers = 0
-        dupes = d
-        tokens = t
-        empties = n - k
-
-        while empties > 0:
-            containers += 1
-            index = np.random.randint(0, n)
-            if collection[index] == 1:
-                dupes += 1
-                if dupes >= c:
-                    new_tokens = dupes // c
-                    tokens += new_tokens
-                    dupes -= new_tokens * c
-            else:
-                collection[index] = 1
-                empties -= 1
-
-            if tokens >= empties:
-                break
-
-        results.append(containers)
-
-    results.sort()
-    percentiles = np.linspace(0, 100, len(results))
+    # Exact PMF via absorbing Markov chain -- replaces the old 100k-run Monte Carlo.
+    pmf = exact_collection_pmf(n, k, t, d, c)
+    percentiles, curve = pmf_to_percentile_curve(pmf, num_points=200)
+    mean_containers = pmf_mean(pmf)
 
     # Generate the plot
     plt.figure(figsize=(10, 5))
-    plt.plot(percentiles, results, label="Number of Containers Needed", color='b')
+    plt.plot(percentiles, curve, label="Number of Containers Needed (exact)", color='b')
     plt.xlabel("Percentile of Players")
     plt.ylabel("Number of Containers Opened")
     plt.title("Containers Needed to Complete a Collection by Percentile")
@@ -132,7 +208,8 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
         f"Items Owned: {k}\n"
         f"Tokens Owned: {t}\n"
         f"Duplicates Owned: {d}\n"
-        f"Conversion Rate: {c}"
+        f"Conversion Rate: {c}\n"
+        f"Exact Mean: {mean_containers:.2f}"
     )
     plt.annotate(
         info_text,
@@ -150,7 +227,7 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
     plt.close()
 
     # Create a file to send as an attachment
-    file = discord.File(img_buffer, filename="collection_simulation.png")
+    file = discord.File(img_buffer, filename="collection_exact.png")
 
     # Send only the image file
     await ctx.send(file=file)
