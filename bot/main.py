@@ -202,7 +202,7 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
 
     # X-axis anchored to fixed 0/20/40/60/80/100 percentile marks
     ax = plt.gca()
-    ax.set_xlim(0, 100)
+    ax.set_xlim(-5, 105)
     ax.set_xticks([0, 20, 40, 60, 80, 100])
     # Y-axis: whole-number container counts only
     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
@@ -214,7 +214,7 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
         f"Tokens Owned: {t}\n"
         f"Duplicates Owned: {d}\n"
         f"Conversion Rate: {c}\n"
-        f"Mean: {mean_containers:.0f} Containers"
+        f"Mean: {mean_containers:.2f} Containers"
     )
     plt.annotate(
         info_text,
