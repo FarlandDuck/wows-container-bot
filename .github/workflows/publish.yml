@@ -28,5 +28,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/farlandduck/discord-py-heroku:latest
-            ghcr.io/farlandduck/discord-py-heroku:${{ github.sha }}
+            ghcr.io/farlandduck/wows-container-bot:latest
+            ghcr.io/farlandduck/wows-container-bot:${{ github.sha }}

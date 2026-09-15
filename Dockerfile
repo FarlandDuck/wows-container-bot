@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Clone the GitHub repository
 RUN apt-get update && apt-get install -y git && \
-    git clone https://github.com/FarlandDuck/discord-py-heroku.git /app
+    git clone https://github.com/FarlandDuck/wows-container-bot.git /app
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
