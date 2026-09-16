@@ -240,34 +240,34 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
     xs, ys = pmf_to_exact_staircase(pmf)
     mean_containers = pmf_mean(pmf)
 
-    # Generate the plot
-    plt.figure(figsize=(10, 5))
-    plt.plot(xs, ys, label="Number of Containers Needed (exact)", color='b')
-    plt.xlabel("Percentile of Players")
-    plt.ylabel("Number of Containers Opened")
-    plt.title("Containers Needed to Complete a Collection by Percentile")
-    plt.grid(True)
-    plt.legend()
+    # Generate the plot, with extra room on the right for a side panel
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.plot(xs, ys, color='b')
+    ax.set_xlabel("Percentile of Players")
+    ax.set_ylabel("Number of Containers Opened")
+    ax.set_title("Containers Needed to Complete a Collection by Percentile")
+    ax.grid(True)
 
     # X-axis anchored to fixed 0/20/40/60/80/100 percentile marks
-    ax = plt.gca()
     ax.set_xlim(-5, 105)
     ax.set_xticks([0, 20, 40, 60, 80, 100])
     # Y-axis: whole-number container counts only
     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
-    # Add contextual information in a box (bottom-right)
+    # Leave a margin on the right of the figure for the parameters panel,
+    # placed outside the plot area rather than overlapping the curve.
+    fig.subplots_adjust(right=0.78)
+
     info_text = (
-        f"Total Items in Collection: {n}\n"
-        f"Items Owned: {k}\n"
-        f"Tokens Owned: {t}\n"
-        f"Duplicates Owned: {d}\n"
-        f"Conversion Rate: {c}"
+        f"Total Items in\nCollection: {n}\n\n"
+        f"Items Owned: {k}\n\n"
+        f"Tokens Owned: {t}\n\n"
+        f"Duplicates\nOwned: {d}\n\n"
+        f"Conversion\nRate: {c}"
     )
-    plt.annotate(
-        info_text,
-        xy=(0.98, 0.02), xycoords='axes fraction',
-        fontsize=10, color='black', ha='right', va='bottom',
+    fig.text(
+        0.99, 0.5, info_text,
+        fontsize=10, color='black', ha='right', va='center',
         bbox=dict(boxstyle="round,pad=0.5", edgecolor='black', facecolor='white')
     )
 
@@ -286,7 +286,7 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
         f"Abs Max: {abs_max} Containers\n"
         f"Mean: {mean_containers:.2f} Containers"
     )
-    plt.annotate(
+    ax.annotate(
         stats_text,
         xy=(0.02, 0.98), xycoords='axes fraction',
         fontsize=10, color='black', ha='left', va='top',
@@ -295,11 +295,11 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
 
     # Save the plot to a BytesIO object
     img_buffer = io.BytesIO()
-    plt.savefig(img_buffer, format='png', bbox_inches='tight')
+    fig.savefig(img_buffer, format='png', bbox_inches='tight')
     img_buffer.seek(0)
 
     # Close the plot
-    plt.close()
+    plt.close(fig)
 
     # Create a file to send as an attachment
     file = discord.File(img_buffer, filename="collection_exact.png")
