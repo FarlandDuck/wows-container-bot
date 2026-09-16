@@ -255,8 +255,8 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
     # Leave a margin on the right of the figure for the parameters panel,
-    # placed outside the plot area rather than overlapping the curve.
-    fig.subplots_adjust(right=0.78)
+    # placed just outside the plot area rather than overlapping the curve.
+    fig.subplots_adjust(right=0.72)
 
     info_text = (
         f"Total Items in\nCollection: {n}\n\n"
@@ -266,8 +266,8 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
         f"Conversion\nRate: {c}"
     )
     fig.text(
-        0.99, 0.5, info_text,
-        fontsize=10, color='black', ha='right', va='center',
+        0.75, 0.5, info_text,
+        fontsize=10, color='black', ha='left', va='center',
         bbox=dict(boxstyle="round,pad=0.5", edgecolor='black', facecolor='white')
     )
 
