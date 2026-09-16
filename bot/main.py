@@ -170,62 +170,43 @@ def pmf_median(pmf):
     return max(pmf.keys())
 
 
-# Rough estimate of World of Warships' active playerbase, used only to decide
-# what counts as a "realistic" outcome to display. WG doesn't publish exact
-# figures; independent estimates of monthly active players across all
-# platforms (Steam + the Wargaming client, which most players use) land
-# roughly in the hundreds-of-thousands-to-low-millions range, so 1,000,000
-# is a reasonable round anchor. This is a display choice, not a precise
-# population count -- feel free to tune it.
-ASSUMED_PLAYERBASE = 1_000_000
-
-# How confident we want to be that NOT A SINGLE player in the whole assumed
-# playerbase ever lands outside the displayed [Min, Max]. This is a genuine
-# trade-off, not a free lunch: the true min/max already have the property
-# that literally nobody can go outside them (probability exactly zero
-# beyond the support of the distribution). Any narrower range necessarily
-# accepts some nonzero risk that a real player eventually falls outside it
-# -- higher CONFIDENCE demands a wider (safer) range, approaching the true
-# min/max as CONFIDENCE -> 100%. 99.9% is a strong, practically-certain bar
-# while still meaningfully excluding the truly astronomical tail.
-CONFIDENCE_NO_EXCEEDANCE = 0.999
+# Measured from the rendered plot: moving 1 percentile point along the x-axis
+# covers about this many pixels. Used only to figure out where the *drawn*
+# curve stops visually resolving individual steps and starts looking like a
+# sheer vertical line, purely because consecutive container-count values each
+# occupy less than a single pixel of width and collapse into the same column.
+PIXELS_PER_PERCENTILE = 7.05
 
 
-def realistic_bounds(pmf, playerbase=ASSUMED_PLAYERBASE, confidence=CONFIDENCE_NO_EXCEEDANCE):
+def pixel_visual_bounds(pmf, pixels_per_percentile=PIXELS_PER_PERCENTILE):
     """
-    Chooses the tightest [Min, Max] such that the probability of at least one
-    player, out of `playerbase` independent players, ever landing outside
-    [Min, Max] is at most (1 - confidence).
+    Finds the "visual" min/max: the first (from each end) container count
+    whose own step is wide enough to occupy at least one pixel on the plot,
+    given the observed pixels-per-percentile scale. Everything beyond these
+    points is mathematically real (nonzero probability) but rendering-wise
+    indistinguishable from a vertical line, since many values compress into
+    the same pixel column.
 
-    For a single player, P(outside bounds) = p. Across N independent players,
-    P(nobody is outside) = (1-p)^N. We want (1-p)^N >= per-tail confidence,
-    i.e. p <= 1 - (per_tail_epsilon)^(1/N), which is the exact (not just
-    epsilon/N approximated) per-player probability threshold. The total
-    allowed failure probability (1-confidence) is split evenly between the
-    lower and upper tail.
+    A step's width in percentile points is pmf[m]*100; it needs
+    pmf[m]*100*pixels_per_percentile >= 1 pixel to be individually visible,
+    i.e. pmf[m] >= 1 / (100 * pixels_per_percentile).
     """
-    epsilon_tail = (1 - confidence) / 2
-    p_tail = 1 - epsilon_tail ** (1.0 / playerbase)
-
+    threshold_prob = 1.0 / (100.0 * pixels_per_percentile)
     ms = sorted(pmf.keys())
 
-    cdf = 0.0
-    low = ms[0]
+    visual_min = ms[0]
     for m in ms:
-        cdf += pmf[m]
-        if cdf >= p_tail:
-            low = m
+        if pmf[m] >= threshold_prob:
+            visual_min = m
             break
 
-    cdf2 = 0.0
-    high = ms[-1]
+    visual_max = ms[-1]
     for m in reversed(ms):
-        cdf2 += pmf[m]
-        if cdf2 >= p_tail:
-            high = m
+        if pmf[m] >= threshold_prob:
+            visual_max = m
             break
 
-    return low, high
+    return visual_min, visual_max
 
 
 # Command: Collection Simulation (now computed exactly, no sampling)
@@ -294,13 +275,16 @@ async def collection(ctx, n: int = None, k: int = None, t: int = None, d: int = 
     # Min/Max are trimmed to realistic outcomes (see realistic_bounds) rather
     # than the literal, astronomically-rare best/worst case the exact chain
     # still technically assigns nonzero probability to.
-    min_containers, max_containers = realistic_bounds(pmf)
+    abs_min, abs_max = min(pmf.keys()), max(pmf.keys())
+    visual_min, visual_max = pixel_visual_bounds(pmf)
     median_containers = pmf_median(pmf)
     stats_text = (
-        f"Min: {min_containers} Containers\n"
-        f"Max: {max_containers} Containers\n"
-        f"Mean: {mean_containers:.2f} Containers\n"
-        f"Median: {median_containers} Containers"
+        f"Abs Min: {abs_min} Containers\n"
+        f"Min: {visual_min} Containers\n"
+        f"Median: {median_containers} Containers\n"
+        f"Max: {visual_max} Containers\n"
+        f"Abs Max: {abs_max} Containers\n"
+        f"Mean: {mean_containers:.2f} Containers"
     )
     plt.annotate(
         stats_text,
