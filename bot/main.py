@@ -180,29 +180,40 @@ PIXELS_PER_PERCENTILE = 7.05
 
 def pixel_visual_bounds(pmf, pixels_per_percentile=PIXELS_PER_PERCENTILE):
     """
-    Finds the "visual" min/max: the first (from each end) container count
-    whose own step is wide enough to occupy at least one pixel on the plot,
-    given the observed pixels-per-percentile scale. Everything beyond these
-    points is mathematically real (nonzero probability) but rendering-wise
-    indistinguishable from a vertical line, since many values compress into
-    the same pixel column.
+    Finds the "visual" min/max: the point where the drawn curve first
+    separates from the near-vertical wall hugging the 0th/100th percentile
+    edge, given the observed pixels-per-percentile scale.
 
-    A step's width in percentile points is pmf[m]*100; it needs
-    pmf[m]*100*pixels_per_percentile >= 1 pixel to be individually visible,
-    i.e. pmf[m] >= 1 / (100 * pixels_per_percentile).
+    That vertical-looking wall isn't caused by any single container count's
+    own step being sub-pixel -- it's caused by a *run* of many tiny steps,
+    each individually sub-pixel, piling up back-to-back from the edge. None
+    of them ever gets its own pixel column on its own, but their combined
+    (cumulative) width does eventually cross a pixel, and that's the point
+    where the line visually detaches from the wall and becomes a
+    distinguishable staircase.
+
+    So this walks the CDF in from each edge and finds the first container
+    count where the *cumulative* probability mass since that edge -- not the
+    mass of that single value -- has covered at least one pixel's worth of
+    percentile-width (pmf[m]*100*pixels_per_percentile accumulated >= 1),
+    i.e. cumulative probability >= 1 / (100 * pixels_per_percentile).
     """
     threshold_prob = 1.0 / (100.0 * pixels_per_percentile)
     ms = sorted(pmf.keys())
 
+    cdf = 0.0
     visual_min = ms[0]
     for m in ms:
-        if pmf[m] >= threshold_prob:
+        cdf += pmf[m]
+        if cdf >= threshold_prob:
             visual_min = m
             break
 
+    cdf2 = 0.0
     visual_max = ms[-1]
     for m in reversed(ms):
-        if pmf[m] >= threshold_prob:
+        cdf2 += pmf[m]
+        if cdf2 >= threshold_prob:
             visual_max = m
             break
 
